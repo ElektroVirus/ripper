@@ -1,51 +1,79 @@
 FROM debian:buster
+ARG optical_gid
+ARG uid=1000
 
-RUN apt-get update \
-  && apt-get install -y cdrdao python-gobject-2 python-musicbrainzngs python-mutagen python-setuptools \
-  python-cddb python-requests libsndfile1-dev flac sox git \
-  libiso9660-dev python-pip swig make pkgconf \
-  eject locales \
-  autoconf libtool curl \
-  && pip install pycdio==2.0.0
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    autoconf \
+    automake \
+    cdrdao \
+    bzip2 \
+    curl \
+    eject \
+    flac \
+    gir1.2-glib-2.0 \
+    git \
+    libdiscid0 \
+    libiso9660-dev \
+    libsndfile1-dev \
+    libtool \
+    locales \
+    make \
+    pkgconf \
+    python3-dev \
+    python3-gi \
+    python3-musicbrainzngs \
+    python3-mutagen \
+    python3-pil \
+    python3-pip \
+    python3-ruamel.yaml \
+    python3-setuptools \
+    sox \
+    swig \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && pip3 --no-cache-dir install pycdio==2.1.0 discid
 
 # libcdio-paranoia / libcdio-utils are wrongfully packaged in Debian, thus built manually
 # see https://github.com/whipper-team/whipper/pull/237#issuecomment-367985625
-RUN curl -o - 'https://ftp.gnu.org/gnu/libcdio/libcdio-2.0.0.tar.gz' | tar zxf - \
-  && cd libcdio-2.0.0 \
-  && autoreconf -fi \
-  && ./configure --disable-dependency-tracking --disable-cxx --disable-example-progs --disable-static \
-  && make install \
-  && cd .. \
-  && rm -rf libcdio-2.0.0
+ENV LIBCDIO_VERSION 2.1.0
+RUN curl -o - "https://ftp.gnu.org/gnu/libcdio/libcdio-${LIBCDIO_VERSION}.tar.bz2" | tar jxf - \
+    && cd libcdio-${LIBCDIO_VERSION} \
+    && autoreconf -fi \
+    && ./configure --disable-dependency-tracking --disable-cxx --disable-example-progs --disable-static \
+    && make install \
+    && cd .. \
+    && rm -rf libcdio-${LIBCDIO_VERSION}
 
 # Install cd-paranoia from tarball
-RUN curl -o - 'https://ftp.gnu.org/gnu/libcdio/libcdio-paranoia-10.2+0.94+2.tar.gz' | tar zxf - \
-  && cd libcdio-paranoia-10.2+0.94+2 \
-  && autoreconf -fi \
-  && ./configure --disable-dependency-tracking --disable-example-progs --disable-static \
-  && make install \
-  && cd .. \ 
-  && rm -rf libcdio-paranoia-10.2+0.94+2
+ENV LIBCDIO_PARANOIA_VERSION 10.2+2.0.1
+RUN curl -o - "https://ftp.gnu.org/gnu/libcdio/libcdio-paranoia-${LIBCDIO_PARANOIA_VERSION}.tar.bz2" | tar jxf - \
+    && cd libcdio-paranoia-${LIBCDIO_PARANOIA_VERSION} \
+    && autoreconf -fi \
+    && ./configure --disable-dependency-tracking --disable-example-progs --disable-static \
+    && make install \
+    && cd .. \
+    && rm -rf libcdio-paranoia-${LIBCDIO_PARANOIA_VERSION}
 
 RUN ldconfig
 
-# add user
-RUN useradd -m worker -G cdrom \
-  && mkdir -p /output /home/worker/.config/whipper /home/worker/.local/share/whipper/plugins \
-  && chown worker: /output /home/worker/.config/whipper /home/worker/.local/share/whipper/plugins
+# add user (+ group workaround for ArchLinux)
+RUN useradd -m worker --uid ${uid} -G cdrom \
+    && if [ -n "${optical_gid}" ]; then groupadd -f -g "${optical_gid}" optical \
+    && usermod -a -G optical worker; fi \
+    && mkdir -p /output /home/worker/.config/whipper \
+    && chown worker: /output /home/worker/.config/whipper
 VOLUME ["/home/worker/.config/whipper", "/output"]
 
 # setup locales + cleanup
 RUN echo "LC_ALL=en_US.UTF-8" >> /etc/environment \
-  && echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen \
-  && echo "LANG=en_US.UTF-8" > /etc/locale.conf \
-  && locale-gen en_US.UTF-8 \
-  && apt-get clean && apt-get autoremove -y
+    && echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen \
+    && echo "LANG=en_US.UTF-8" > /etc/locale.conf \
+    && locale-gen en_US.UTF-8
 
 # install whipper
-RUN mkdir /whipper && git clone https://github.com/whipper-team/whipper /whipper
-RUN cd /whipper/src && make && make install \
-  && cd /whipper && python2 setup.py install
+RUN mkdir /whipper
+COPY . /whipper/
+RUN cd /whipper && python3 setup.py install \
+    && rm -rf /whipper
 
 # install eac logger
 RUN git clone https://github.com/whipper-team/whipper-plugin-eaclogger.git /whipper/whipper-plugin-eaclogger \
