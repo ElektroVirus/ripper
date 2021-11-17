@@ -70,14 +70,14 @@ RUN echo "LC_ALL=en_US.UTF-8" >> /etc/environment \
     && locale-gen en_US.UTF-8
 
 # install whipper
-RUN mkdir /whipper
-COPY . /whipper/
+RUN git clone https://github.com/whipper-team/whipper.git
 RUN cd /whipper && python3 setup.py install
 
 # install eac logger
 RUN git clone https://github.com/whipper-team/whipper-plugin-eaclogger.git /whipper/whipper-plugin-eaclogger \
   && cd /whipper/whipper-plugin-eaclogger \
-  && python2 setup.py bdist_egg \
+  && python3 setup.py bdist_egg \
+  && mkdir -p /home/worker/.local/share/whipper/plugins/ \
   && cp dist/whipper_plugin_eaclogger*.egg /home/worker/.local/share/whipper/plugins/ \
   && cd \
   && rm -rf /whipper
